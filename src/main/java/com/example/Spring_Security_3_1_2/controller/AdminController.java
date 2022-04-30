@@ -1,16 +1,18 @@
 package com.example.Spring_Security_3_1_2.controller;
 
+import com.example.Spring_Security_3_1_2.dao.RoleDao;
+import com.example.Spring_Security_3_1_2.dao.UserDao;
 import com.example.Spring_Security_3_1_2.model.Role;
 import com.example.Spring_Security_3_1_2.model.User;
 import com.example.Spring_Security_3_1_2.service.RoleService;
 import com.example.Spring_Security_3_1_2.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.ui.ModelMap;
 import org.springframework.web.bind.annotation.*;
 
-
-import java.security.Principal;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -18,75 +20,72 @@ import java.util.Set;
 @RequestMapping("/admin")
 public class AdminController {
 
+    private final UserDao userDao;
+    private final RoleDao roleDao;
 
-    private final UserService userService;
-    private final RoleService roleService;
+
+    private UserService userService;
+    private RoleService roleService;
 
     @Autowired
-    public AdminController(UserService userService, RoleService roleService) {
+    public AdminController(UserService userService, RoleService roleService, UserDao userDao, RoleDao roleDao) {
         this.userService = userService;
         this.roleService = roleService;
+        this.userDao = userDao;
+        this.roleDao = roleDao;
     }
 
     @GetMapping
-    public String getUser(Principal principal, Model model) {
-        model.addAttribute("user", userService.getUserByUsername(principal.getName()));
-        model.addAttribute("roles", userService.getUserByUsername(principal.getName()).getRoles());
-        return "show_user";
-    }
-
-    @GetMapping("/user_list")
-    public String allUsers(Model model) {
-        model.addAttribute("users", userService.index());
-        return "all_users";
-    }
-
-    @GetMapping("/new")
-    public String formNewUser(@ModelAttribute("user") User user, Model model) {
-        model.addAttribute("listRoles", roleService.findAllRoles());
-        return "new";
+    public String printUsers(@AuthenticationPrincipal org.springframework.security.core.userdetails.User user, Model model) {
+        model.addAttribute("user", userService.getUserByUsername(user.getUsername()));
+        model.addAttribute("userList", userService.index());
+        model.addAttribute("roles", roleService.findAllRoles());
+        return "admin";
     }
 
     @PostMapping
-    public String createUser(@ModelAttribute("user") User user,
-                             @RequestParam(required=false) String roleAdmin,
-                             @RequestParam(required=false) String roleUser) {
-        setRolesFromRequest(user, roleAdmin, roleUser);
+    public String add(@ModelAttribute("user") User user,
+                      @RequestParam(value = "nameRoles") String[]roles) {
+     //   setRolesFromRequest(user, roleAdmin, roleUser);
+        user.setRoles(getSetOfRoles(roles));
         userService.addUser(user);
-        return "redirect:/admin/user_list";
+        return "redirect:/admin/";
+    }
+
+    @GetMapping("/{id}/remove")
+    public String remove(@PathVariable("id") long id) {
+        userService.removeUser(id);
+        return "redirect:/admin/";
     }
 
     @GetMapping("/{id}/edit")
-    public String edit(Model model, @PathVariable("id") long id) {
+    public String edit(@ModelAttribute("user") User user,
+                       ModelMap model,
+                       @PathVariable("id") int id,
+                       @RequestParam(value = "editRoles") String[]roles) {
+       // setRolesFromRequest(user, roleAdmin, roleUser);
+        user.setRoles(getSetOfRoles(roles));
+        model.addAttribute("roles", roleService.findAllRoles());
         model.addAttribute("user", userService.getUserById(id));
-        return "edit";
+        return "admin";
     }
 
-    @PostMapping("/edit")
-    public String update(@ModelAttribute("person") User user,
-                         @RequestParam(required=false) String roleAdmin,
-                         @RequestParam(required=false) String roleUser) {
-        setRolesFromRequest(user, roleAdmin, roleUser);
+    @PostMapping("/{id}")
+    public String update(@ModelAttribute("user") User user,
+                         @PathVariable("id") long id,
+                         @RequestParam(value = "editRoles") String[]roles) {
+      //  setRolesFromRequest(user, roleAdmin, roleUser);
+        user.setRoles(getSetOfRoles(roles));
         userService.updateUser(user);
-        return "redirect:/admin/user_list";
+        return "redirect:/admin/";
     }
 
-    @GetMapping("/{id}/delete")
-    public String delete(@PathVariable("id") long id) {
-        userService.removeUser(id);
-        return "redirect:/admin/user_list";
+    public HashSet<Role> getSetOfRoles(String[] roleNames) {
+        Set<Role> roleSet = new HashSet<>();
+        for (String role : roleNames) {
+            roleSet.add(roleDao.getRoleByName(role));
+        }
+        return (HashSet) roleSet;
+    }
     }
 
-    private void setRolesFromRequest(@ModelAttribute("person") User user,
-                                     @RequestParam(required = false) String roleAdmin,
-                                     @RequestParam(required = false) String roleUser) {
-        Set<Role> roles = new HashSet<>();
-        if (roleAdmin != null) {
-            roles.add(roleService.getRoleByName(roleAdmin));
-        }
-        if (roleUser != null) {
-            roles.add(roleService.getRoleByName(roleUser));
-        }
-        user.setRoles(roles);
-    }
-}
